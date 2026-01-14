@@ -1,0 +1,221 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { nanoid } from 'nanoid';
+import { FILTER_OPTIONS, SORT_OPTIONS, PRIORITY_LEVELS } from '../utils/constants';
+
+/**
+ * Migrates old localStorage format to new format
+ * Converts Math.random() IDs to nanoid and adds missing fields
+ */
+const migrateTodos = (todos) => {
+  if (!Array.isArray(todos)) {
+    return [];
+  }
+
+  return todos.map((todo) => {
+    const migratedTodo = { ...todo };
+
+    // Convert old numeric IDs to nanoid format
+    if (typeof todo.id === 'number' || (typeof todo.id === 'string' && /^0\.\d+$/.test(todo.id))) {
+      migratedTodo.id = nanoid();
+    }
+
+    // Ensure ID exists
+    if (!migratedTodo.id) {
+      migratedTodo.id = nanoid();
+    }
+
+    // Add createdAt if missing (use current time as fallback)
+    if (!migratedTodo.createdAt) {
+      migratedTodo.createdAt = new Date().toISOString();
+    }
+
+    // Add priority if missing (default to low)
+    if (!migratedTodo.priority) {
+      migratedTodo.priority = PRIORITY_LEVELS.LOW;
+    }
+
+    // Ensure completed is boolean
+    if (typeof migratedTodo.completed !== 'boolean') {
+      migratedTodo.completed = false;
+    }
+
+    // Ensure dueDate is properly formatted or null
+    if (migratedTodo.dueDate && typeof migratedTodo.dueDate !== 'string') {
+      try {
+        migratedTodo.dueDate = new Date(migratedTodo.dueDate).toISOString();
+      } catch (error) {
+        migratedTodo.dueDate = null;
+      }
+    }
+
+    return migratedTodo;
+  });
+};
+
+/**
+ * Zustand store for managing todo state with persistence
+ */
+const useTodoStore = create(
+  persist(
+    (set, get) => ({
+      // State
+      todos: [],
+      filter: FILTER_OPTIONS.ALL,
+      sortBy: SORT_OPTIONS.DATE_DESC,
+      searchQuery: '',
+
+      // Actions
+      /**
+       * Adds a new todo to the list
+       * @param {string} text - The todo text
+       * @param {string|null} dueDate - Optional due date (ISO string)
+       * @param {string} priority - Priority level (low|medium|high)
+       */
+      addTodo: (text, dueDate = null, priority = PRIORITY_LEVELS.LOW) => {
+        const newTodo = {
+          id: nanoid(),
+          text,
+          completed: false,
+          createdAt: new Date().toISOString(),
+          dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+          priority,
+        };
+
+        set((state) => ({
+          todos: [newTodo, ...state.todos],
+        }));
+      },
+
+      /**
+       * Updates an existing todo with partial updates
+       * @param {string} id - The todo ID
+       * @param {Object} updates - Partial todo object with fields to update
+       */
+      updateTodo: (id, updates) => {
+        set((state) => ({
+          todos: state.todos.map((todo) =>
+            todo.id === id ? { ...todo, ...updates } : todo
+          ),
+        }));
+      },
+
+      /**
+       * Deletes a todo by ID
+       * @param {string} id - The todo ID to delete
+       */
+      deleteTodo: (id) => {
+        set((state) => ({
+          todos: state.todos.filter((todo) => todo.id !== id),
+        }));
+      },
+
+      /**
+       * Toggles the completed status of a todo
+       * @param {string} id - The todo ID to toggle
+       */
+      toggleTodo: (id) => {
+        set((state) => ({
+          todos: state.todos.map((todo) =>
+            todo.id === id ? { ...todo, completed: !todo.completed } : todo
+          ),
+        }));
+      },
+
+      /**
+       * Replaces the entire todos array (used for drag-and-drop reordering)
+       * @param {Array} newOrder - New array of todos in desired order
+       */
+      reorderTodos: (newOrder) => {
+        set({ todos: newOrder });
+      },
+
+      /**
+       * Sets the filter option
+       * @param {string} filter - Filter option (all|active|completed)
+       */
+      setFilter: (filter) => {
+        set({ filter });
+      },
+
+      /**
+       * Sets the sort option
+       * @param {string} sortBy - Sort option from SORT_OPTIONS
+       */
+      setSortBy: (sortBy) => {
+        set({ sortBy });
+      },
+
+      /**
+       * Sets the search query
+       * @param {string} query - Search query string
+       */
+      setSearchQuery: (query) => {
+        set({ searchQuery: query });
+      },
+
+      /**
+       * Removes all completed todos from the list
+       */
+      clearCompleted: () => {
+        set((state) => ({
+          todos: state.todos.filter((todo) => !todo.completed),
+        }));
+      },
+    }),
+    {
+      name: 'todo-storage',
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+
+      /**
+       * Migration logic for handling old localStorage formats
+       */
+      migrate: (persistedState, version) => {
+        // If migrating from version 0 (no version) to version 1
+        if (version === 0) {
+          const migratedTodos = migrateTodos(persistedState.todos || []);
+          return {
+            ...persistedState,
+            todos: migratedTodos,
+            filter: persistedState.filter || FILTER_OPTIONS.ALL,
+            sortBy: persistedState.sortBy || SORT_OPTIONS.DATE_DESC,
+            searchQuery: persistedState.searchQuery || '',
+          };
+        }
+
+        return persistedState;
+      },
+
+      /**
+       * Error handler for rehydration errors
+       */
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.error('Error rehydrating todo storage:', error);
+          // Optionally clear corrupted storage
+          try {
+            localStorage.removeItem('todo-storage');
+          } catch (clearError) {
+            console.error('Error clearing corrupted storage:', clearError);
+          }
+        } else {
+          console.log('Todo storage rehydrated successfully');
+        }
+      },
+
+      /**
+       * Partialize function to specify which state to persist
+       * Excludes searchQuery from persistence (session-only state)
+       */
+      partialize: (state) => ({
+        todos: state.todos,
+        filter: state.filter,
+        sortBy: state.sortBy,
+        // searchQuery is intentionally excluded (session-only)
+      }),
+    }
+  )
+);
+
+export default useTodoStore;
