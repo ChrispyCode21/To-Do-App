@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { format, isToday, isTomorrow } from 'date-fns';
+import { format, isToday, isTomorrow, isYesterday } from 'date-fns';
 import useTodoStore from '../store/useTodoStore';
 import { PRIORITY_COLORS } from '../utils/constants';
 import { isOverdue, parseLocalDate } from '../utils/todoHelpers';
@@ -35,6 +35,7 @@ function TodoItem({ todo }) {
     try {
       if (isToday(date)) return 'Today';
       if (isTomorrow(date)) return 'Tomorrow';
+      if (isYesterday(date)) return 'Yesterday';
       return format(date, 'MMM d, yyyy');
     } catch (error) {
       console.error('Error formatting date:', error);

@@ -1,5 +1,5 @@
-import { compareAsc, compareDesc, isPast, startOfDay } from 'date-fns';
-import { SORT_OPTIONS, FILTER_OPTIONS, PRIORITY_LEVELS } from './constants';
+import { compareAsc, compareDesc, isPast, startOfDay } from "date-fns";
+import { SORT_OPTIONS, FILTER_OPTIONS, PRIORITY_LEVELS } from "./constants";
 
 /**
  * Parses a date string (YYYY-MM-DD) as a local date, not UTC
@@ -8,29 +8,32 @@ import { SORT_OPTIONS, FILTER_OPTIONS, PRIORITY_LEVELS } from './constants';
  * @returns {Date|null} Date object in local timezone, or null if invalid
  */
 export const parseLocalDate = (dateString) => {
-  if (!dateString || typeof dateString !== 'string') return null;
+  if (!dateString) return null;
 
-  try {
-    const [year, month, day] = dateString.split('-').map(Number);
+  // Normalize ISO -> YYYY-MM-DD
+  const datePart = String(dateString).split("T")[0];
 
-    // Validate the parsed values
-    if (!year || !month || !day || isNaN(year) || isNaN(month) || isNaN(day)) {
-      return null;
-    }
+  const [year, month, day] = datePart.split("-").map(Number);
 
-    const date = new Date(year, month - 1, day); // month is 0-indexed in JavaScript
-
-    // Check if the date is valid
-    if (isNaN(date.getTime())) {
-      return null;
-    }
-
-    return date;
-  } catch (error) {
-    console.error('Error parsing date:', error);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
     return null;
   }
+
+  const date = new Date(year, month - 1, day);
+
+  // Validate no overflow (Feb 30, etc.)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
 };
+
+
 
 /**
  * Validates todo input text
@@ -38,10 +41,10 @@ export const parseLocalDate = (dateString) => {
  * @returns {{valid: boolean, error?: string}} Validation result
  */
 export const validateTodoInput = (text) => {
-  if (!text || typeof text !== 'string') {
+  if (!text || typeof text !== "string") {
     return {
       valid: false,
-      error: 'Todo text is required',
+      error: "Todo text is required",
     };
   }
 
@@ -50,14 +53,14 @@ export const validateTodoInput = (text) => {
   if (trimmedText.length === 0) {
     return {
       valid: false,
-      error: 'Todo text cannot be empty or whitespace only',
+      error: "Todo text cannot be empty or whitespace only",
     };
   }
 
   if (trimmedText.length > 500) {
     return {
       valid: false,
-      error: 'Todo text cannot exceed 500 characters',
+      error: "Todo text cannot exceed 500 characters",
     };
   }
 
@@ -135,7 +138,7 @@ export const sortTodos = (todos, sortBy) => {
  * @param {string} searchQuery - Search query string (case-insensitive)
  * @returns {Array} Filtered array of todos
  */
-export const filterTodos = (todos, filter, searchQuery = '') => {
+export const filterTodos = (todos, filter, searchQuery = "") => {
   if (!Array.isArray(todos)) {
     return [];
   }
@@ -159,7 +162,7 @@ export const filterTodos = (todos, filter, searchQuery = '') => {
   }
 
   // Filter by search query
-  if (searchQuery && typeof searchQuery === 'string') {
+  if (searchQuery && typeof searchQuery === "string") {
     const query = searchQuery.trim().toLowerCase();
     if (query.length > 0) {
       filteredTodos = filteredTodos.filter((todo) =>
@@ -182,13 +185,14 @@ export const isOverdue = (dueDate) => {
   }
 
   try {
-    const date = typeof dueDate === 'string' ? parseLocalDate(dueDate) : new Date(dueDate);
+    const date =
+      typeof dueDate === "string" ? parseLocalDate(dueDate) : new Date(dueDate);
     const today = startOfDay(new Date());
     const dueDateStart = startOfDay(date);
 
     return isPast(dueDateStart) && dueDateStart < today;
   } catch (error) {
-    console.error('Error checking overdue status:', error);
+    console.error("Error checking overdue status:", error);
     return false;
   }
 };
